@@ -1,4 +1,8 @@
 import numpy as np
+import board
+import play as p
+import game
+from random_player import GreedyRandomPlayer
 
 def to_string(grid):
     result = ""
@@ -214,26 +218,29 @@ def sample_policy(policy, state):
         pSoFar += p
         pSelect.append(pSoFar)
 
-    print("Actions: ", actions)
-    print("PROBABILITIES: ", pSelect)
+    #print("Actions: ", actions)
+    #print("PROBABILITIES: ", pSelect)
 
     # draw a value
     sample = np.random.uniform()
-    print("Sample value: ", sample)
+    #print("Sample value: ", sample)
     selectedAction = None
     for i in range(0,len(pSelect)):
         if sample < pSelect[i]:
             selectedAction = actions[i]
             break
 
-    print("Selected action: ", selectedAction)
+    #print("Selected action: ", selectedAction)
     return selectedAction
 
 def generate_state_action_episode(grid, from_cell, policy):
     states = get_states(grid)
     current_cell = from_cell
 
+    print("Generating episode starting from state: ", to_state(grid, current_cell), " --> ", current_cell)
+
     transitions = []
+    steps = 0
     while True:
 
         if (current_cell == (0,0) or current_cell == (3,3)):
@@ -242,21 +249,34 @@ def generate_state_action_episode(grid, from_cell, policy):
         # now do a transition
         #inx_select = np.random.randint(0,len(actions))
         #action = actions[inx_select]
-        state = to_state(current_cell)
+        state = to_state(grid,current_cell)
 
         selectedAction = sample_policy(policy, state)
         # do a transition
         next_cell, reward = do_transition(grid, current_cell, selectedAction)
 
+        steps += 1
+
         transition = {}
         transition['from_cell'] = current_cell
         transition['to_cell'] = next_cell
-        transition['action'] = action
+        transition['action'] = selectedAction
         transition['reward'] = reward
 
         transitions.append(transition)
 
         current_cell = next_cell
+
+        # if we end up seeing the same cell too many times in a row, we should bail out
+
+        if (steps > 100):
+            print("NOT CONVERGING ...")
+            print("POLICY: ", policy[state], " State: ", state, " Cell: ", current_cell)
+            for j in range(0,10):
+                print(transitions[j])
+
+            return transitions
+
 
     return transitions
 
@@ -291,15 +311,24 @@ def generate_episode(grid, from_cell, actions):
     return transitions
 
 def extract_state_actions_visited(transitions):
-    state_actions = []
+
+    value_dict = {}
     for t in transitions:
         # t['from_cell']
-        state_action = {}
-        state_action['from_cell'] = t['from_cell']
-        state_action['action'] = t['action']
-        state_actions.append(state_action)
+#        state_action = {}
+        tmp = str(t['from_cell']) + ":" + t['action']
+        value_dict[tmp] = (t['from_cell'], t['action'])
+#        state_action['from_cell'] = t['from_cell']
+#        state_action['action'] = t['action']
+#        state_actions.append(state_action)
 
-    return set(state_actions)
+    state_actions = []
+    for key in value_dict.keys():
+        sa = value_dict[key]
+        state_actions.append(sa)
+
+    return state_actions
+
 
 def extract_states_visited(transitions):
     states = []
@@ -372,21 +401,232 @@ def init_random_policy(states, actions):
 def find_max_action(Q, s):
 
     valuesByAction = Q[s]
-    actions = valuesByAction.keys()
+    #print("ValuesByAction for state: ", s, " --> ", valuesByAction)
+
+    actions = list(valuesByAction.keys())
     values = []
     for a in actions:
         values.append(valuesByAction[a])
 
+    #print("values --> ", values)
     # now sort
     inx_sorted = np.argsort(values)
+
+    #print("sorted indices: ", inx_sorted)
 
     # return highest value
     return actions[inx_sorted[-1]]
 
 def get_actions(Q, state):
-    valuesByAction = Q[s]
+    valuesByAction = Q[state]
     actions = valuesByAction.keys()
     return set(actions)
+
+def find_first_transition_index(transitions, state_action):
+
+    #print("Looking for match for state/action: ", state_action)
+
+    for i in range(0,len(transitions)):
+        transition = transitions[i]
+        if transition['from_cell'] == state_action[0] and transition['action'] == state_action[1]:
+            return i
+
+    return -1
+
+def to_board_state(board):
+    return str(board)
+
+def test_sample_policy():
+
+    board = p.empty_board()
+    policy = {}
+    move = sample_tic_tac_toe_policy(board,policy)
+    print("SELECTED MOVE: ", move)
+
+def sample_tic_tac_toe_policy(current_board, policy):
+
+    current_state = to_board_state(current_board)
+    # make a move
+    if current_state not in policy.keys():
+
+        # enumerate the set of available actions
+        # initialize a random policy
+        available_cells = board.get_available_cells(current_board)
+
+        policy[current_state] = {}
+
+        for cell in available_cells:
+            action = board.to_state(cell)
+            policy[current_state][action] = 1.0/len(available_cells)
+
+    probabilityByAction = policy[current_state]
+    actions = list(probabilityByAction.keys()) # these are integer values 0-8
+
+    # compute CDF for each action
+    pSelect = []
+    pSoFar = 0
+    for action in actions:
+        p = probabilityByAction[action]
+        pSoFar += p
+        pSelect.append(pSoFar)
+
+    print("Actions: ", actions)
+    print("PROBABILITIES: ", pSelect)
+
+    # draw a value
+    sample = np.random.uniform()
+    print("Sample value: ", sample)
+    selectedAction = None
+    for i in range(0,len(pSelect)):
+        if sample < pSelect[i]:
+            selectedAction = actions[i]
+            break
+
+    print("Selected action: ", selectedAction)
+    return board.to_cell(selectedAction)
+
+def test_episode():
+    policy = {}
+    transitions = generate_tic_tac_toe_episode(policy)
+    for t in transitions:
+        print(t)
+
+def model_environment(opponent, state, action):
+
+    game_complete = False
+    initial_board = state
+    current_board = p.add_move('X',action,initial_board)
+
+    print("AFTER AGENT MOVE:")
+    print(game.to_display_string(current_board))
+
+    reward = 0.0
+
+    if p.is_winner(current_board,'X'):
+        game_complete = True
+        reward = 1.0
+    elif p.is_cat_game(current_board):
+        game_complete = True
+        reward = 0.0
+
+    if not game_complete:
+        # let the opponent make a move ...
+        (opponent_id, opponent_move) = opponent.pick_next_move(current_board)
+
+        current_board = p.add_move(opponent_id, opponent_move, current_board)
+
+        print("AFTER OPPONENT MOVE")
+        print(game.to_display_string(current_board))
+
+
+        if p.is_winner(current_board,opponent_id):
+            game_complete = True
+            reward = -1.0
+        elif p.is_cat_game(current_board):
+            game_complete = True
+            reward = 0
+
+    return current_board, reward, game_complete
+
+def generate_tic_tac_toe_episode(policy):
+
+    current_board = p.empty_board()
+
+    opponent = GreedyRandomPlayer('O')
+
+    game_complete = False
+    transitions = []
+    while not game_complete:
+
+        previous_state = current_board
+
+        print("PRIOR TO MOVE:")
+        print(game.to_display_string(current_board))
+
+        selectedAction = sample_tic_tac_toe_policy(current_board, policy)
+
+        # model the environment --> returns a next state and a reward
+        next_state, reward, game_complete = model_environment(opponent, current_board, selectedAction)
+
+        # append the episode
+        transition = {}
+        transition['from_state'] = current_board
+        transition['to_state'] = next_state
+        transition['action'] = selectedAction
+        transition['reward'] = reward
+        transitions.append(transition)
+
+        current_board = next_state
+
+    # now figure out the reward
+    print("BOARD AT END OF EPISODE")
+    print(game.to_display_string(current_board))
+
+    return transitions
+
+# note --> this will mutate the values passed in
+def update_state_value_estimates(transitions, Q, returns):
+
+    gamma = 0.95
+    for i in range(0,len(transitions)):
+        cumulative_reward = 0
+        for j in range(i,len(transitions)):
+            transition = transitions[j]
+            cumulative_reward = gamma*cumulative_reward + transition['reward']
+
+            state = to_board_state(transition['from_state'])
+            cell = transition['action'] # this is a cell
+            action = board.to_state(cell)
+
+            # update returns(s,a)
+            if not state in returns.keys():
+                returns[state] = {}
+
+            returnsByAction = returns[state]
+            if not action in returnsByAction.keys():
+                returnsByAction[action] = []
+
+            previous_returns = returnsByAction[action]
+            previous_returns.append(cumulative_reward)
+
+            #print("Reward history for state ", state, " / action ", action, " --> ", len(returns[state][action]), " : ", returns[state][action])
+
+            # update Q(s,a)
+            if not state in Q:
+                Q[state] = {}
+
+            valueByAction = Q[state]
+            valueByAction[action] = np.mean(previous_returns)
+
+    return Q, returns
+
+
+def test_tic_tac_toe(n=1):
+
+    Q = {}
+    policy = {}  # map [state] --> [action] --> probability
+    returns = {} # map [state] --> [action] --> list of returns
+
+    iter_count = 0
+    while True:
+
+        iter_count += 1
+
+        transitions = generate_tic_tac_toe_episode(policy)
+
+        # TODO:  update Q(s,a) estimates
+        Q, returns = update_state_value_estimates(transitions, Q, returns)
+
+        # TODO:  update policy pi(a|s) --> act epsilon-greedy w.r.t. Q(s,a)
+
+        # TODO:  termination criteria?
+        if iter_count >=n:
+            break
+
+
+    return Q, policy
+
+
 
 def test_on_policy_first_time_mc(n = 1):
 
@@ -400,43 +640,74 @@ def test_on_policy_first_time_mc(n = 1):
     Q = init_state_action_value_function(states, actions)
     returns = init_state_action_returns(states, actions)
 
-    initial_cell = pick_initial_cell(grid)
-    transitions = generate_state_action_episode(grid, initial_cell, policy)
+    print("INITIAL RETURNS: ", returns)
 
-    unique_state_actions = extract_state_actions_visited(transitions)
-    unique_cells = extract_states_visited(transitions)
+    initial_cell = (2,1)
 
+    iter_count = 0
+    while True:
 
+        iter_count += 1
 
+#        initial_cell = pick_initial_cell(grid)
 
-    for state_action in unique_state_actions:
-        cell = state_action['from_cell']
-        state = to_state(cell)
-        action = state_action['action']
+        transitions = generate_state_action_episode(grid, initial_cell, policy)
 
-        inx = find_first_transition_index(transitions, state_action)
-        cumulative_reward = 0
-        for i in range(inx,len(transitions)):
-            transition = transitions[i]
-            cumulative_reward += transition['reward']
+        print("Number of transitions found in episode[", iter_count,"]: ", len(transitions))
 
-        returns[state][action].append(cumulative_reward)
-        Q[state][action] = np.mean(returns[state][action])
+        unique_state_actions = extract_state_actions_visited(transitions)
+        print("FOUND ", len(unique_state_actions), " unique state/action pairs...")
 
+        unique_cells = []
+        for sa in unique_state_actions:
+            unique_cells.append(sa[0])
+    #    extract_states_visited(transitions)
 
-    # now update policy
-    epsilon = 0.001
-    for cell in unique_cells:
-        state = to_state(grid, cell)
-        astar = find_max_action(Q, state)
+        for state_action in unique_state_actions:
+            cell = state_action[0]
+            state = to_state(grid,cell)
+            action = state_action[1]
 
-        possible_actions = get_actions(Q, state)
+            #print("State/action: ", state_action, " --> Action: ", action)
 
-        for action in possible_actions:
-            if action == astar:
-                policy[action][state] = 1.0 - epsilon + epsilon / len(possible_actions)
-            else:
-                policy[action][state] = epsilon / len(possible_actions)
+            inx = find_first_transition_index(transitions, state_action)
+            #print("First transition index: ", inx)
+            if (inx < 0):
+                continue
+
+            gamma = 0.95
+            cumulative_reward = 0
+            # go in the opposite order ?
+            #tmp = list(range(inx,len(transitions)))
+            #tmp.reverse()
+            for i in range(inx,len(transitions)):
+                transition = transitions[i]
+                cumulative_reward = gamma*cumulative_reward + transition['reward']
+
+            #print("Adding cumulative reward for state ", state, " / action ", action, " --> ", cumulative_reward)
+
+            returns[state][action].append(cumulative_reward)
+
+            #print("Reward history for state ", state, " / action ", action, " --> ", len(returns[state][action]), " : ", returns[state][action])
+
+            Q[state][action] = np.mean(returns[state][action])
+
+        # now update policy
+        epsilon = 0.001
+        for cell in unique_cells:
+            state = to_state(grid, cell)
+            astar = find_max_action(Q, state)
+
+            possible_actions = get_actions(Q, state)
+
+            for action in possible_actions:
+                if action == astar:
+                    policy[state][action] = 1.0 - epsilon + epsilon / len(possible_actions)
+                else:
+                    policy[state][action] = epsilon / len(possible_actions)
+
+        if iter_count >= n:
+            break
 
     return Q, policy
 

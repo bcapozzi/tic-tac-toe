@@ -3,6 +3,14 @@ import numpy as np
 import play as p
 import csv
 
+class PolicyIteratingRLPlayer(player.Player):
+    def __init__(self, player):
+        self.player = player
+
+    def pick_next_move(self, board):
+
+        return (self.player, None)
+
 class RLPlayer(player.Player):
     """
     create a RL player

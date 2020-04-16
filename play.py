@@ -162,7 +162,7 @@ def add_move(player, cell, board):
         row = cell[0]
         col = cell[1]
         updated_board[row][col] = player
-        print("Updated board: ", updated_board)
+        #print("Updated board: ", updated_board)
 
         return updated_board
 
