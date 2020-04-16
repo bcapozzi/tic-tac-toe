@@ -4,6 +4,9 @@ import play as p
 import game
 from random_player import GreedyRandomPlayer
 
+file = open("ipe.txt","w")
+
+
 def to_string(grid):
     result = ""
     for row in grid:
@@ -401,18 +404,18 @@ def init_random_policy(states, actions):
 def find_max_action(Q, s):
 
     valuesByAction = Q[s]
-    #print("ValuesByAction for state: ", s, " --> ", valuesByAction)
+    file.write("ValuesByAction for state: " + str(s) +  " --> " + str(valuesByAction) + "\n")
 
     actions = list(valuesByAction.keys())
     values = []
     for a in actions:
         values.append(valuesByAction[a])
 
-    #print("values --> ", values)
+    file.write("values --> " + str(values) + "\n")
     # now sort
     inx_sorted = np.argsort(values)
 
-    #print("sorted indices: ", inx_sorted)
+    file.write("sorted indices: " + str(inx_sorted) + "\n")
 
     # return highest value
     return actions[inx_sorted[-1]]
@@ -470,8 +473,12 @@ def sample_tic_tac_toe_policy(current_board, policy):
         pSoFar += p
         pSelect.append(pSoFar)
 
+    file.write("policy by action: " + str(probabilityByAction) + "\n")
     print("Actions: ", actions)
+    file.write("Action: " + str(actions) + "\n")
     print("PROBABILITIES: ", pSelect)
+    file.write("PROBABILITIES: " + str(pSelect) + "\n")
+    file.flush()
 
     # draw a value
     sample = np.random.uniform()
@@ -483,6 +490,8 @@ def sample_tic_tac_toe_policy(current_board, policy):
             break
 
     print("Selected action: ", selectedAction)
+    file.write("Selected action: " + str(selectedAction) + "\n")
+    file.flush()
     return board.to_cell(selectedAction)
 
 def test_episode():
@@ -495,10 +504,16 @@ def model_environment(opponent, state, action):
 
     game_complete = False
     initial_board = state
+
+    file.write("AGENT MAKING MOVE: " + str(action) + str(board.to_state(action)) + "\n")
+
     current_board = p.add_move('X',action,initial_board)
 
     print("AFTER AGENT MOVE:")
     print(game.to_display_string(current_board))
+
+    file.write("AFTER AGENT MOVE:\n")
+    file.write(game.to_display_string(current_board))
 
     reward = 0.0
 
@@ -518,6 +533,8 @@ def model_environment(opponent, state, action):
         print("AFTER OPPONENT MOVE")
         print(game.to_display_string(current_board))
 
+        file.write("AFTER OPPONENT MOVE\n")
+        file.write(game.to_display_string(current_board))
 
         if p.is_winner(current_board,opponent_id):
             game_complete = True
@@ -542,6 +559,8 @@ def generate_tic_tac_toe_episode(policy):
 
         print("PRIOR TO MOVE:")
         print(game.to_display_string(current_board))
+        file.write("PRIOR TO MOVE:\n")
+        file.write(game.to_display_string(current_board))
 
         selectedAction = sample_tic_tac_toe_policy(current_board, policy)
 
@@ -556,11 +575,15 @@ def generate_tic_tac_toe_episode(policy):
         transition['reward'] = reward
         transitions.append(transition)
 
+        file.write("ADDING TRANSITION: " + str(transition) + "\n")
+
         current_board = next_state
 
     # now figure out the reward
     print("BOARD AT END OF EPISODE")
     print(game.to_display_string(current_board))
+    file.write("BOARD AT END OF EPISODE\n")
+    file.write(game.to_display_string(current_board))
 
     return transitions
 
@@ -570,39 +593,90 @@ def update_state_value_estimates(transitions, Q, returns):
     gamma = 0.95
     for i in range(0,len(transitions)):
         cumulative_reward = 0
+        file.write("Computing future returns for transition [" + str(i) + "] : " + str(transitions[i]) + "\n")
+
+        visited = transitions[i]
         for j in range(i,len(transitions)):
             transition = transitions[j]
-            cumulative_reward = gamma*cumulative_reward + transition['reward']
+            discount = pow(gamma,j-i)
+            file.write("Reward for transition[" + str(j) + "] : " + str(transition['reward']) + " , discount: " + str(discount) + "\n")
+            cumulative_reward += pow(gamma,j-i)*transition['reward']
 
-            state = to_board_state(transition['from_state'])
-            cell = transition['action'] # this is a cell
-            action = board.to_state(cell)
+        state = to_board_state(visited['from_state'])
+        cell = visited['action'] # this is a cell
+        action = board.to_state(cell)
 
-            # update returns(s,a)
-            if not state in returns.keys():
-                returns[state] = {}
+        # update returns(s,a)
+        if not state in returns.keys():
+            returns[state] = {}
 
-            returnsByAction = returns[state]
-            if not action in returnsByAction.keys():
-                returnsByAction[action] = []
+        returnsByAction = returns[state]
+        if not action in returnsByAction.keys():
+            returnsByAction[action] = []
 
-            previous_returns = returnsByAction[action]
-            previous_returns.append(cumulative_reward)
+        previous_returns = returnsByAction[action]
+        previous_returns.append(cumulative_reward)
 
-            #print("Reward history for state ", state, " / action ", action, " --> ", len(returns[state][action]), " : ", returns[state][action])
+        file.write("Reward history for state " + str(state) + " / action " + str(action) +  " --> " + str(len(previous_returns)) +  " : " + str(previous_returns) + "\n")
 
-            # update Q(s,a)
-            if not state in Q:
-                Q[state] = {}
+        # update Q(s,a)
+        if not state in Q:
+            file.write("state " + str(state) + " not yet in Q(s,a) --> initializing empty map\n")
+            Q[state] = {}
+            # TODO:  enumerate possible actions, and set values to 0
+            available_cells = board.get_available_cells(visited['from_state'])
+            for cell in available_cells:
+                action = board.to_state(cell)
+                Q[state][action] = 0.0
 
-            valueByAction = Q[state]
-            valueByAction[action] = np.mean(previous_returns)
+        valueByAction = Q[state]
+        valueByAction[action] = np.mean(previous_returns)
+        file.write("Updating value for state " + str(state) + " / action: " + str(action) + " to: " + str(np.mean(previous_returns)) + "\n")
+        file.flush()
 
     return Q, returns
 
+def update_policy(transitions, Q, policy):
+
+    epsilon = 0.001
+    print("PREVIOUS POLICY: ", policy)
+
+    file.write("PREVIOUS POLICY: \n")
+    for state in policy.keys():
+        file.write(state + "\n")
+        pByAction = policy[state]
+        file.write("p(a): " + str(pByAction) + "\n")
+
+    for transition in transitions:
+        state = to_board_state(transition['from_state'])
+
+        print("UPDATE POLICY:  FROM STATE")
+        print(game.to_display_string(transition['from_state']))
+        file.write(game.to_display_string(transition['from_state']))
+
+        astar = find_max_action(Q, state)
+        print("UPDATE POLICY:  ASTAR ==> ", astar)
+        file.write("UPDATE POLICY:  ASTAR ==> " + str(astar) + "\n")
+
+        possible_actions = get_actions(policy, state)
+        print("POSSIBLE ACTIONS: ", possible_actions)
+        file.write("POSSIBLE ACTIONS: " + str(possible_actions) + "\n")
+
+        for action in possible_actions:
+            if action == astar:
+                policy[state][action] = 1.0 - epsilon + epsilon / len(possible_actions)
+            else:
+                policy[state][action] = epsilon / len(possible_actions)
+
+        print("UPDATED POLICY ==> ", policy)
+        file.write("UPDATED POLICY: " + str(policy) + "\n")
+
+    return policy
 
 def test_tic_tac_toe(n=1):
 
+    np.random.seed(0)
+    
     Q = {}
     policy = {}  # map [state] --> [action] --> probability
     returns = {} # map [state] --> [action] --> list of returns
@@ -612,18 +686,20 @@ def test_tic_tac_toe(n=1):
 
         iter_count += 1
 
+        file.write("GENERATING EPISODE " + str(iter_count) + "----------\n")
         transitions = generate_tic_tac_toe_episode(policy)
 
         # TODO:  update Q(s,a) estimates
         Q, returns = update_state_value_estimates(transitions, Q, returns)
 
         # TODO:  update policy pi(a|s) --> act epsilon-greedy w.r.t. Q(s,a)
+        policy = update_policy(transitions, Q, policy)
 
         # TODO:  termination criteria?
         if iter_count >=n:
             break
 
-
+    file.close()
     return Q, policy
 
 

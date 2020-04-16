@@ -6,11 +6,15 @@ def to_state(cell):
     return cell[0]*ncols + cell[1]
 
 def to_cell(state):
-    nrows = 3
-    ncols = 3
-    in_row = np.floor(state / (ncols))
-    in_col = (state/ncols - in_row)*nrows
-    return (int(in_row),int(in_col))
+    result = np.unravel_index([state],(3,3))
+    row = result[0][0]
+    col = result[1][0]
+#    nrows = 3
+#    ncols = 3
+#    in_row = np.floor(state / (ncols))
+#    in_col = (state/ncols - in_row)*nrows
+    return (row, col)
+#    return (int(in_row),int(in_col))
 
 def copy(board):
     #print("COPY --> INPUT BOARD: ", board)
