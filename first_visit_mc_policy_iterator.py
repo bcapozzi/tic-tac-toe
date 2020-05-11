@@ -13,6 +13,15 @@ def get_actions(Q, state):
     actions = valuesByAction.keys()
     return set(actions)
 
+def update_action_probability(astar, possible_actions, epsilon):
+    result = {}
+    for action in possible_actions:
+        if action == astar:
+            result[action] = 1.0 - epsilon + epsilon / len(possible_actions)
+        else:
+            result[action] = epsilon / len(possible_actions)
+
+    return result
 
 class FirstVisitMCPolicyIterator:
 
@@ -44,22 +53,22 @@ class FirstVisitMCPolicyIterator:
             pSelect.append(pSoFar)
 
         self.file.write("policy by action: " + str(probabilityByAction) + "\n")
-        print("Actions: ", actions)
+#        print("Actions: ", actions)
         self.file.write("Action: " + str(actions) + "\n")
-        print("PROBABILITIES: ", pSelect)
+#        print("PROBABILITIES: ", pSelect)
         self.file.write("PROBABILITIES: " + str(pSelect) + "\n")
         self.file.flush()
 
         # draw a value
         sample = np.random.uniform()
-        print("Sample value: ", sample)
+#        print("Sample value: ", sample)
         selectedAction = None
         for i in range(0,len(pSelect)):
             if sample < pSelect[i]:
                 selectedAction = actions[i]
                 break
 
-        print("Selected action: ", selectedAction)
+#        print("Selected action: ", selectedAction)
         self.file.write("Selected action: " + str(selectedAction) + "\n")
         self.file.flush()
         return board.to_cell(selectedAction)
@@ -73,8 +82,8 @@ class FirstVisitMCPolicyIterator:
 
         current_board = p.add_move('X',action,initial_board)
 
-        print("AFTER AGENT MOVE:")
-        print(game.to_display_string(current_board))
+#        print("AFTER AGENT MOVE:")
+#        print(game.to_display_string(current_board))
 
         self.file.write("AFTER AGENT MOVE:\n")
         self.file.write(game.to_display_string(current_board))
@@ -94,8 +103,8 @@ class FirstVisitMCPolicyIterator:
 
             current_board = p.add_move(opponent_id, opponent_move, current_board)
 
-            print("AFTER OPPONENT MOVE")
-            print(game.to_display_string(current_board))
+#            print("AFTER OPPONENT MOVE")
+#            print(game.to_display_string(current_board))
 
             self.file.write("AFTER OPPONENT MOVE\n")
             self.file.write(game.to_display_string(current_board))
@@ -121,8 +130,8 @@ class FirstVisitMCPolicyIterator:
 
             previous_state = current_board
 
-            print("PRIOR TO MOVE:")
-            print(game.to_display_string(current_board))
+#            print("PRIOR TO MOVE:")
+#            print(game.to_display_string(current_board))
             self.file.write("PRIOR TO MOVE:\n")
             self.file.write(game.to_display_string(current_board))
 
@@ -144,8 +153,8 @@ class FirstVisitMCPolicyIterator:
             current_board = next_state
 
         # now figure out the reward
-        print("BOARD AT END OF EPISODE")
-        print(game.to_display_string(current_board))
+#        print("BOARD AT END OF EPISODE")
+#        print(game.to_display_string(current_board))
         self.file.write("BOARD AT END OF EPISODE\n")
         self.file.write(game.to_display_string(current_board))
 
@@ -219,10 +228,9 @@ class FirstVisitMCPolicyIterator:
         # return highest value
         return actions[inx_sorted[-1]]
 
-    def update_policy(self, transitions, Q, policy):
+    def update_policy(self, transitions, Q, policy, epsilon):
 
-        epsilon = 0.001
-        print("PREVIOUS POLICY: ", policy)
+#        print("PREVIOUS POLICY: ", policy)
 
         self.file.write("PREVIOUS POLICY: \n")
         for state in policy.keys():
@@ -233,16 +241,16 @@ class FirstVisitMCPolicyIterator:
         for transition in transitions:
             state = to_board_state(transition['from_state'])
 
-            print("UPDATE POLICY:  FROM STATE")
-            print(game.to_display_string(transition['from_state']))
+#            print("UPDATE POLICY:  FROM STATE")
+#            print(game.to_display_string(transition['from_state']))
             self.file.write(game.to_display_string(transition['from_state']))
 
             astar = self.find_max_action(Q, state)
-            print("UPDATE POLICY:  ASTAR ==> ", astar)
+#            print("UPDATE POLICY:  ASTAR ==> ", astar)
             self.file.write("UPDATE POLICY:  ASTAR ==> " + str(astar) + "\n")
 
             possible_actions = get_actions(policy, state)
-            print("POSSIBLE ACTIONS: ", possible_actions)
+#            print("POSSIBLE ACTIONS: ", possible_actions)
             self.file.write("POSSIBLE ACTIONS: " + str(possible_actions) + "\n")
 
             for action in possible_actions:
@@ -251,12 +259,12 @@ class FirstVisitMCPolicyIterator:
                 else:
                     policy[state][action] = epsilon / len(possible_actions)
 
-            print("UPDATED POLICY ==> ", policy)
+#            print("UPDATED POLICY ==> ", policy)
             self.file.write("UPDATED POLICY: " + str(policy) + "\n")
 
         return policy
 
-    def learn_tic_tac_toe(self, n=1):
+    def learn_tic_tac_toe(self, n=1, initial_epsilon=0.1):
 
         self.file = open("ipe_tic_tac_toe.txt","w")
 
@@ -267,6 +275,7 @@ class FirstVisitMCPolicyIterator:
         returns = {} # map [state] --> [action] --> list of returns
 
         iter_count = 0
+        epsilon = initial_epsilon
         while True:
 
             iter_count += 1
@@ -278,7 +287,7 @@ class FirstVisitMCPolicyIterator:
             Q, returns = self.update_state_value_estimates(transitions, Q, returns)
 
             # TODO:  update policy pi(a|s) --> act epsilon-greedy w.r.t. Q(s,a)
-            policy = self.update_policy(transitions, Q, policy)
+            policy = self.update_policy(transitions, Q, policy, epsilon)
 
             # TODO:  termination criteria?
             if iter_count >=n:
